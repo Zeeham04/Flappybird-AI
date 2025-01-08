@@ -1,124 +1,200 @@
-import random  # Used for generating random pipe heights
-import pygame  # Used for creating the game visuals and mechanics
-import neat    # Used for implementing the neural network and evolution logic
+import random
+import pygame
+import neat
+import os
+import sys
 
-# Initialize the Pygame library
+# Initialize Pygame
 pygame.init()
 
 # Load images and assets
-BG = pygame.image.load("assets/background.png")  # Background image
-BG_WIDTH, BG_HEIGHT = BG.get_size()  # Dynamically retrieve background size
-WN = pygame.display.set_mode((BG_WIDTH, BG_HEIGHT))  # Set up the display window
-pygame.display.set_caption("AI Plays Flappy Bird")   # Set the window title
+BG = pygame.image.load("assets/background.png")
+BG_WIDTH, BG_HEIGHT = BG.get_size()
+WN = pygame.display.set_mode((BG_WIDTH, BG_HEIGHT))
+pygame.display.set_caption("Flappy Bird: AI vs Human")
 
 # Game constants
-CLOCK = pygame.time.Clock()  # Clock object to control the frame rate
-RED = (255, 0, 0)            # Color used for drawing distance lines (RGB format)
-BLACK = (0, 0, 0)            # Color used for text
-FPS = 60                     # Frames per second
+CLOCK = pygame.time.Clock()
+RED = (255, 0, 0)
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+FPS = 60
+GRAVITY = 0.5  # Reduced gravity for smoother falling
+JUMP_SPEED = -8  # Added jump speed for more controlled jumps
+MAX_FALL_SPEED = 10  # Added maximum fall speed
+GAP_PIPE = 150
+PIPE_EVENT = pygame.USEREVENT
+pygame.time.set_timer(PIPE_EVENT, 1500)  # Increased time between pipes
+FONT = pygame.font.SysFont("comicsans", 30)
+STATS_FONT = pygame.font.SysFont("comicsans", 24)
+SCORE_INCREASE = 0.1
 
 # Bird settings
-BIRD_IMG = pygame.image.load("assets/bird.png")  # Bird image
-BIRD_SIZE = (40, 26)                             # Dimensions for the bird
-BIRD_IMG = pygame.transform.scale(BIRD_IMG, BIRD_SIZE)  # Resize bird image
-GRAVITY = 4                                      # Gravity constant affecting the bird's fall
-JUMP = 30                                        # Vertical jump height for the bird
+BIRD_IMG = pygame.image.load("assets/bird.png")
+BIRD_SIZE = (40, 26)
+BIRD_IMG = pygame.transform.scale(BIRD_IMG, BIRD_SIZE)
 
 # Pipe settings
-PIPE_X0 = BG_WIDTH  # Initial x-coordinate of pipes
-PIPE_BOTTOM_IMG = pygame.image.load("assets/pipe.png")  # Bottom pipe image
-PIPE_TOP_IMG = pygame.transform.flip(PIPE_BOTTOM_IMG, False, True)  # Flipped image for the top pipe
-PIPE_BOTTOM_HEIGHTS = [90, 122, 154, 186, 218, 250]  # Possible heights for bottom pipes
-GAP_PIPE = 150  # Gap between the top and bottom pipes
-PIPE_EVENT = pygame.USEREVENT  # Custom event for pipe generation
-pygame.time.set_timer(PIPE_EVENT, 1000)  # Set the timer to trigger the event every second
+PIPE_BOTTOM_IMG = pygame.image.load("assets/pipe.png")
+PIPE_TOP_IMG = pygame.transform.flip(PIPE_BOTTOM_IMG, False, True)
+PIPE_BOTTOM_HEIGHTS = [90, 122, 154, 186, 218, 250]
+PIPE_SPEED = 3  # Added constant for pipe speed
 
-# Fonts
-FONT = pygame.font.SysFont("comicsans", 30)  # Font for displaying text
-STATS_FONT = pygame.font.SysFont("comicsans", 24)  # Smaller font for stats display
+# Global variables
+GEN = 0
+HUMAN_MODE = False
 
-# Score and generation counters
-SCORE_INCREASE = 0.01  # Score increment for surviving birds
-GEN = 0  # Counter for tracking generations
-
-# Pipe class to represent each pipe pair
 class Pipe:
     def __init__(self, height):
-        # Bottom pipe positioning
-        bottom_midtop = (PIPE_X0, BG_HEIGHT - height)
-        # Top pipe positioning
-        top_midbottom = (PIPE_X0, BG_HEIGHT - height - GAP_PIPE)
-        # Rectangles representing the pipe hitboxes
+        bottom_midtop = (BG_WIDTH, BG_HEIGHT - height)
+        top_midbottom = (BG_WIDTH, BG_HEIGHT - height - GAP_PIPE)
         self.bottom_pipe_rect = PIPE_BOTTOM_IMG.get_rect(midtop=bottom_midtop)
         self.top_pipe_rect = PIPE_TOP_IMG.get_rect(midbottom=top_midbottom)
+        self.passed = False  # Track if bird has passed this pipe
 
-    def display_pipe(self):
-        # Draw both the bottom and top pipes on the screen
+    def move(self):
+        self.bottom_pipe_rect.x -= PIPE_SPEED
+        self.top_pipe_rect.x -= PIPE_SPEED
+
+    def display(self):
         WN.blit(PIPE_BOTTOM_IMG, self.bottom_pipe_rect)
         WN.blit(PIPE_TOP_IMG, self.top_pipe_rect)
 
-# Bird class to represent each bird
 class Bird:
     def __init__(self):
-        self.bird_rect = BIRD_IMG.get_rect(center=(BG_WIDTH // 2, BG_HEIGHT // 2))  # Initialize bird position
-        self.dead = False  # Flag to indicate if the bird is dead
-        self.score = 0     # Bird's score
+        self.bird_rect = BIRD_IMG.get_rect(center=(BG_WIDTH // 4, BG_HEIGHT // 2))  # Changed initial position
+        self.dead = False
+        self.score = 0
+        self.velocity = 0  # Added velocity for smooth movement
+        self.flap_cooldown = 0  # Prevents rapid flapping
+
+    def move(self, jump=False):
+        if jump and self.flap_cooldown <= 0:
+            self.velocity = JUMP_SPEED
+            self.flap_cooldown = 10  # Set cooldown frames
+        
+        # Apply gravity and update position
+        self.velocity = min(self.velocity + GRAVITY, MAX_FALL_SPEED)
+        self.bird_rect.centery += self.velocity
+        
+        # Update flap cooldown
+        if self.flap_cooldown > 0:
+            self.flap_cooldown -= 1
 
     def collision(self, pipes):
-        # Check for collision with any pipe or boundaries
         for pipe in pipes:
             if self.bird_rect.colliderect(pipe.bottom_pipe_rect) or \
                self.bird_rect.colliderect(pipe.top_pipe_rect):
                 return True
-        # Check for collision with the top or bottom of the screen
         if self.bird_rect.midbottom[1] >= BG_HEIGHT or self.bird_rect.midtop[1] < 0:
             return True
         return False
 
-    def find_nearest_pipes(self, pipes):
-        # Find the nearest pipes (top and bottom) in front of the bird
-        nearest_pipe_top = None
-        nearest_pipe_bottom = None
-        min_distance = BG_WIDTH
-        for pipe in pipes:
-            curr_distance = pipe.bottom_pipe_rect.topright[0] - self.bird_rect.topleft[0]
-            if curr_distance < 0:
-                continue  # Skip pipes already behind the bird
-            elif curr_distance <= min_distance:
-                min_distance = curr_distance
-                nearest_pipe_bottom = pipe.bottom_pipe_rect
-                nearest_pipe_top = pipe.top_pipe_rect
-        return nearest_pipe_top, nearest_pipe_bottom
+def menu():
+    while True:
+        WN.blit(BG, (0, 0))
+        title = FONT.render("Flappy Bird: AI vs Human", True, BLACK)
+        human_button = FONT.render("1. Human Mode", True, BLACK)
+        ai_button = FONT.render("2. AI Mode", True, BLACK)
+        quit_button = FONT.render("3. Quit", True, BLACK)
+        instructions = STATS_FONT.render("Press SPACE to flap!", True, BLACK)
 
-    def get_distances(self, top_pipe, bottom_pipe):
-        # Calculate distances to the nearest pipes
-        distance = [BG_WIDTH] * 3
-        distance[0] = top_pipe.centerx - self.bird_rect.centerx  # Horizontal distance
-        distance[1] = self.bird_rect.topleft[1] - top_pipe.bottomright[1]  # Vertical distance to top pipe
-        distance[2] = bottom_pipe.topright[1] - self.bird_rect.bottomright[1]  # Vertical distance to bottom pipe
-        return distance
+        WN.blit(title, (BG_WIDTH // 2 - title.get_width() // 2, BG_HEIGHT // 4))
+        WN.blit(human_button, (BG_WIDTH // 2 - human_button.get_width() // 2, BG_HEIGHT // 2 - 50))
+        WN.blit(ai_button, (BG_WIDTH // 2 - ai_button.get_width() // 2, BG_HEIGHT // 2))
+        WN.blit(quit_button, (BG_WIDTH // 2 - quit_button.get_width() // 2, BG_HEIGHT // 2 + 50))
+        WN.blit(instructions, (BG_WIDTH // 2 - instructions.get_width() // 2, BG_HEIGHT // 2 + 100))
 
-    def draw_lines(self, top_pipe, bottom_pipe):
-        # Draw lines to visualize distances to the nearest pipes
-        pygame.draw.line(WN, RED, self.bird_rect.midright, top_pipe.midbottom, 5)
-        pygame.draw.line(WN, RED, self.bird_rect.midright, bottom_pipe.midtop, 5)
+        pygame.display.update()
 
-# Game loop that controls one generation
-def game_loop(genomes, config):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    return "HUMAN"
+                if event.key == pygame.K_2:
+                    return "AI"
+                if event.key == pygame.K_3:
+                    pygame.quit()
+                    sys.exit()
+
+def human_game():
+    bird = Bird()
+    pipes = []
+    score = 0
+    start_time = pygame.time.get_ticks()
+    game_started = False  # Track if game has started
+
+    while True:
+        # Handle events
+        jump = False
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == PIPE_EVENT and game_started:
+                height = random.choice(PIPE_BOTTOM_HEIGHTS)
+                pipes.append(Pipe(height))
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                jump = True
+                if not game_started:
+                    game_started = True
+
+        # Draw background
+        WN.blit(BG, (0, 0))
+
+        if not game_started:
+            # Display "Press SPACE to start" message
+            start_text = FONT.render("Press SPACE to start!", True, BLACK)
+            WN.blit(start_text, (BG_WIDTH // 2 - start_text.get_width() // 2, BG_HEIGHT // 2))
+        else:
+            # Game logic
+            # Move and display pipes
+            for pipe in pipes:
+                pipe.move()
+                pipe.display()
+                # Check for score increase
+                if not pipe.passed and pipe.bottom_pipe_rect.right < bird.bird_rect.left:
+                    score += 1
+                    pipe.passed = True
+
+            # Remove off-screen pipes
+            pipes = [pipe for pipe in pipes if pipe.bottom_pipe_rect.right > 0]
+
+        # Update and display bird
+        bird.move(jump)
+        WN.blit(BIRD_IMG, bird.bird_rect)
+
+        # Check for collision only if game has started
+        if game_started and bird.collision(pipes):
+            game_over_text = FONT.render(f"Game Over! Score: {score}", True, BLACK)
+            WN.blit(game_over_text, (BG_WIDTH // 2 - game_over_text.get_width() // 2, BG_HEIGHT // 2))
+            pygame.display.update()
+            pygame.time.wait(2000)  # Wait 2 seconds before returning
+            return  # Return to the menu
+
+        # Display score
+        score_text = FONT.render(f"Score: {score}", True, BLACK)
+        WN.blit(score_text, (10, 10))
+
+        pygame.display.update()
+        CLOCK.tick(FPS)
+
+def ai_game(genomes, config):
     global GEN
-    GEN += 1  # Increment generation counter
+    GEN += 1
 
-    # Initialize birds, networks, and genomes
     birds = []
     nets = []
-    ge = []  # Genomes list
-
-    pipe_list = []  # List to store pipes
-    start_time = pygame.time.get_ticks()  # Record the start time of the generation
+    ge = []
+    pipes = []
+    start_time = pygame.time.get_ticks()
 
     for _, genome in genomes:
-        net = neat.nn.FeedForwardNetwork.create(genome, config)  # Create neural network
-        genome.fitness = 0  # Initialize fitness score
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        genome.fitness = 0
         nets.append(net)
         birds.append(Bird())
         ge.append(genome)
@@ -127,79 +203,64 @@ def game_loop(genomes, config):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                quit()
-            if event.type == PIPE_EVENT:  # Triggered every second to generate pipes
-                bottom_height = random.choice(PIPE_BOTTOM_HEIGHTS)
-                pipe_list.append(Pipe(bottom_height))
+                sys.exit()
+            if event.type == PIPE_EVENT:
+                height = random.choice(PIPE_BOTTOM_HEIGHTS)
+                pipes.append(Pipe(height))
 
-        # Draw background
         WN.blit(BG, (0, 0))
-        remove_pipes = []  # List of pipes to remove
 
-        # Update pipe positions and display them
-        for pipe in pipe_list:
-            pipe.top_pipe_rect.x -= 3  # Move pipes left
-            pipe.bottom_pipe_rect.x -= 3
-            pipe.display_pipe()
+        # Move pipes and remove off-screen pipes
+        if pipes:
+            for pipe in pipes:
+                pipe.move()
+                pipe.display()
+            pipes = [pipe for pipe in pipes if pipe.bottom_pipe_rect.x > -100]
 
-            if pipe.top_pipe_rect.x < -100:  # Remove pipes out of the screen
-                remove_pipes.append(pipe)
-
-        for r in remove_pipes:
-            pipe_list.remove(r)
-
+        # Update birds
         alive_birds = 0
-        max_score = 0
-
-        # Process each bird
         for i, bird in enumerate(birds):
             if not bird.dead:
-                bird.bird_rect.centery += GRAVITY  # Apply gravity
-                bird.score += SCORE_INCREASE  # Increment score
-                alive_birds += 1
-                max_score = max(max_score, bird.score)
-                ge[i].fitness += bird.score  # Update fitness based on score
-
-                WN.blit(BIRD_IMG, bird.bird_rect)  # Draw the bird
-                bird.dead = bird.collision(pipe_list)  # Check for collisions
-
-                # Find the nearest pipes and get distances
-                nearest_pipes = bird.find_nearest_pipes(pipe_list)
-                if nearest_pipes[0]:
-                    distances = bird.get_distances(nearest_pipes[0], nearest_pipes[1])
-                    bird.draw_lines(nearest_pipes[0], nearest_pipes[1])
+                if pipes:
+                    output = nets[i].activate([bird.bird_rect.y, pipes[0].top_pipe_rect.x, bird.bird_rect.y - (pipes[0].bottom_pipe_rect.top - GAP_PIPE / 2)])
                 else:
-                    distances = [BG_WIDTH] * 3
+                    output = nets[i].activate([bird.bird_rect.y, BG_WIDTH, 0])
+                
+                bird.move(jump=output[0] > 0.5)
+                bird.score += SCORE_INCREASE
+                ge[i].fitness += SCORE_INCREASE
+                WN.blit(BIRD_IMG, bird.bird_rect)
 
-                # Neural network prediction
-                output = nets[i].activate(distances)
-                if output[0] > 0.5:  # Simple threshold for jumping
-                    bird.bird_rect.centery -= JUMP
+                if bird.collision(pipes):
+                    bird.dead = True
+                else:
+                    alive_birds += 1
 
-        if alive_birds == 0:  # End generation if all birds are dead
+        if alive_birds == 0:
             return
 
-        # Display generation stats neatly
-        current_time = (pygame.time.get_ticks() - start_time) // 1000  # Time elapsed in seconds
-        stats = [
-            f"Generation: {GEN}",
-            f"Alive Birds: {alive_birds}",
-            f"Score: {int(max_score)}",
-            f"Time: {current_time}s",
-        ]
+        elapsed_time = (pygame.time.get_ticks() - start_time) // 1000
+        stats = [f"Generation: {GEN}", f"Alive Birds: {alive_birds}", f"Time: {elapsed_time}s"]
         for idx, stat in enumerate(stats):
-            stat_text = STATS_FONT.render(stat, True, BLACK)
-            WN.blit(stat_text, (10, 10 + idx * 30))  # Adjusted spacing for smaller stats font
+            text = FONT.render(stat, True, BLACK)
+            WN.blit(text, (10, 10 + idx * 30))
 
         pygame.display.update()
-        CLOCK.tick(FPS)  # Control frame rate
+        CLOCK.tick(FPS)
 
-# Run the NEAT algorithm
-neat_config = neat.config.Config(
-    neat.DefaultGenome, neat.DefaultReproduction,
-    neat.DefaultSpeciesSet, neat.DefaultStagnation, "config.txt"
-)
-population = neat.Population(neat_config)  # Initialize NEAT population
-stats = neat.StatisticsReporter()  # Add a statistics reporter
-population.add_reporter(stats)
-population.run(game_loop, 20)  # Run for 20 generations with 10 birds each
+def run():
+    while True:
+        mode = menu()
+
+        if mode == "HUMAN":
+            human_game()
+        elif mode == "AI":
+            config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+            config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                                      neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                                      config_path)
+            population = neat.Population(config)
+            population.run(ai_game, 20)
+
+if __name__ == "__main__":
+    run()
