@@ -203,4 +203,4 @@ neat_config = neat.config.Config(
 population = neat.Population(neat_config)  # Initialize NEAT population
 stats = neat.StatisticsReporter()  # Add a statistics reporter
 population.add_reporter(stats)
-population.run(game_loop, 5)  # Run for 5 birds per generation
+population.run(game_loop, 20)  # Run for 20 generations
