@@ -173,8 +173,7 @@ def game_loop(genomes, config):
 
                 # Neural network prediction
                 output = nets[i].activate(distances)
-                max_ind = output.index(max(output))  # Find the action with the highest probability
-                if max_ind == 0:  # If the network decides to jump
+                if output[0] > 0.5:  # Simple threshold for jumping
                     bird.bird_rect.centery -= JUMP
 
         if alive_birds == 0:  # End generation if all birds are dead
@@ -203,4 +202,4 @@ neat_config = neat.config.Config(
 population = neat.Population(neat_config)  # Initialize NEAT population
 stats = neat.StatisticsReporter()  # Add a statistics reporter
 population.add_reporter(stats)
-population.run(game_loop, 20)  # Run for 20 generations
+population.run(game_loop, 20)  # Run for 20 generations with 10 birds each
