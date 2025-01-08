@@ -5,20 +5,19 @@ import neat    # Used for implementing the neural network and evolution logic
 # Initialize the Pygame library
 pygame.init()
 
+# Load images and assets
+BG = pygame.image.load("assets/background.png")  # Background image
+BG_WIDTH, BG_HEIGHT = BG.get_size()  # Dynamically retrieve background size
+WN = pygame.display.set_mode((BG_WIDTH, BG_HEIGHT))  # Set up the display window
+pygame.display.set_caption("AI Plays Flappy Bird")   # Set the window title
+
 # Game constants
 CLOCK = pygame.time.Clock()  # Clock object to control the frame rate
 RED = (255, 0, 0)            # Color used for drawing distance lines (RGB format)
 BLACK = (0, 0, 0)            # Color used for text
 FPS = 60                     # Frames per second
 
-# Window dimensions and setup
-WN_WIDTH = 600               # Updated width of the game window
-WN_HEIGHT = 800              # Updated height of the game window
-WN = pygame.display.set_mode((WN_WIDTH, WN_HEIGHT))  # Set up the display window
-pygame.display.set_caption("AI Plays Flappy Bird")   # Set the window title
-
-# Load images and assets
-BG = pygame.image.load("assets/background.png")  # Background image
+# Bird settings
 BIRD_IMG = pygame.image.load("assets/bird.png")  # Bird image
 BIRD_SIZE = (40, 26)                             # Dimensions for the bird
 BIRD_IMG = pygame.transform.scale(BIRD_IMG, BIRD_SIZE)  # Resize bird image
@@ -26,15 +25,19 @@ GRAVITY = 4                                      # Gravity constant affecting th
 JUMP = 30                                        # Vertical jump height for the bird
 
 # Pipe settings
-PIPE_X0 = 400  # Initial x-coordinate of pipes
+PIPE_X0 = BG_WIDTH  # Initial x-coordinate of pipes
 PIPE_BOTTOM_IMG = pygame.image.load("assets/pipe.png")  # Bottom pipe image
 PIPE_TOP_IMG = pygame.transform.flip(PIPE_BOTTOM_IMG, False, True)  # Flipped image for the top pipe
 PIPE_BOTTOM_HEIGHTS = [90, 122, 154, 186, 218, 250]  # Possible heights for bottom pipes
 GAP_PIPE = 150  # Gap between the top and bottom pipes
 PIPE_EVENT = pygame.USEREVENT  # Custom event for pipe generation
 pygame.time.set_timer(PIPE_EVENT, 1000)  # Set the timer to trigger the event every second
+
+# Fonts
 FONT = pygame.font.SysFont("comicsans", 30)  # Font for displaying text
-STATS_FONT = pygame.font.SysFont("comicsans", 40)  # Font for stats display
+STATS_FONT = pygame.font.SysFont("comicsans", 24)  # Smaller font for stats display
+
+# Score and generation counters
 SCORE_INCREASE = 0.01  # Score increment for surviving birds
 GEN = 0  # Counter for tracking generations
 
@@ -42,9 +45,9 @@ GEN = 0  # Counter for tracking generations
 class Pipe:
     def __init__(self, height):
         # Bottom pipe positioning
-        bottom_midtop = (PIPE_X0, WN_HEIGHT - height)
+        bottom_midtop = (PIPE_X0, BG_HEIGHT - height)
         # Top pipe positioning
-        top_midbottom = (PIPE_X0, WN_HEIGHT - height - GAP_PIPE)
+        top_midbottom = (PIPE_X0, BG_HEIGHT - height - GAP_PIPE)
         # Rectangles representing the pipe hitboxes
         self.bottom_pipe_rect = PIPE_BOTTOM_IMG.get_rect(midtop=bottom_midtop)
         self.top_pipe_rect = PIPE_TOP_IMG.get_rect(midbottom=top_midbottom)
@@ -57,7 +60,7 @@ class Pipe:
 # Bird class to represent each bird
 class Bird:
     def __init__(self):
-        self.bird_rect = BIRD_IMG.get_rect(center=(WN_WIDTH // 2, WN_HEIGHT // 2))  # Initialize bird position
+        self.bird_rect = BIRD_IMG.get_rect(center=(BG_WIDTH // 2, BG_HEIGHT // 2))  # Initialize bird position
         self.dead = False  # Flag to indicate if the bird is dead
         self.score = 0     # Bird's score
 
@@ -68,7 +71,7 @@ class Bird:
                self.bird_rect.colliderect(pipe.top_pipe_rect):
                 return True
         # Check for collision with the top or bottom of the screen
-        if self.bird_rect.midbottom[1] >= WN_HEIGHT or self.bird_rect.midtop[1] < 0:
+        if self.bird_rect.midbottom[1] >= BG_HEIGHT or self.bird_rect.midtop[1] < 0:
             return True
         return False
 
@@ -76,7 +79,7 @@ class Bird:
         # Find the nearest pipes (top and bottom) in front of the bird
         nearest_pipe_top = None
         nearest_pipe_bottom = None
-        min_distance = WN_WIDTH
+        min_distance = BG_WIDTH
         for pipe in pipes:
             curr_distance = pipe.bottom_pipe_rect.topright[0] - self.bird_rect.topleft[0]
             if curr_distance < 0:
@@ -89,7 +92,7 @@ class Bird:
 
     def get_distances(self, top_pipe, bottom_pipe):
         # Calculate distances to the nearest pipes
-        distance = [WN_WIDTH] * 3
+        distance = [BG_WIDTH] * 3
         distance[0] = top_pipe.centerx - self.bird_rect.centerx  # Horizontal distance
         distance[1] = self.bird_rect.topleft[1] - top_pipe.bottomright[1]  # Vertical distance to top pipe
         distance[2] = bottom_pipe.topright[1] - self.bird_rect.bottomright[1]  # Vertical distance to bottom pipe
@@ -166,7 +169,7 @@ def game_loop(genomes, config):
                     distances = bird.get_distances(nearest_pipes[0], nearest_pipes[1])
                     bird.draw_lines(nearest_pipes[0], nearest_pipes[1])
                 else:
-                    distances = [WN_WIDTH] * 3
+                    distances = [BG_WIDTH] * 3
 
                 # Neural network prediction
                 output = nets[i].activate(distances)
@@ -187,7 +190,7 @@ def game_loop(genomes, config):
         ]
         for idx, stat in enumerate(stats):
             stat_text = STATS_FONT.render(stat, True, BLACK)
-            WN.blit(stat_text, (10, 10 + idx * 40))  # Display each stat with spacing
+            WN.blit(stat_text, (10, 10 + idx * 30))  # Adjusted spacing for smaller stats font
 
         pygame.display.update()
         CLOCK.tick(FPS)  # Control frame rate
@@ -200,4 +203,4 @@ neat_config = neat.config.Config(
 population = neat.Population(neat_config)  # Initialize NEAT population
 stats = neat.StatisticsReporter()  # Add a statistics reporter
 population.add_reporter(stats)
-population.run(game_loop, 50)  # Run for 50 generations
+population.run(game_loop, 5)  # Run for 5 birds per generation
