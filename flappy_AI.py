@@ -1,4 +1,3 @@
-# Import required libraries
 import random  # Used for generating random pipe heights
 import pygame  # Used for creating the game visuals and mechanics
 import neat    # Used for implementing the neural network and evolution logic
@@ -13,18 +12,18 @@ BLACK = (0, 0, 0)            # Color used for text
 FPS = 60                     # Frames per second
 
 # Window dimensions and setup
-WN_WIDTH = 400               # Width of the game window
-WN_HEIGHT = 500              # Height of the game window
+WN_WIDTH = 600               # Updated width of the game window
+WN_HEIGHT = 800              # Updated height of the game window
 WN = pygame.display.set_mode((WN_WIDTH, WN_HEIGHT))  # Set up the display window
 pygame.display.set_caption("AI Plays Flappy Bird")   # Set the window title
 
 # Load images and assets
-BG = pygame.image.load("assets/bird_bg.png")  # Background image
+BG = pygame.image.load("assets/background.png")  # Background image
 BIRD_IMG = pygame.image.load("assets/bird.png")  # Bird image
-BIRD_SIZE = (40, 26)                           # Dimensions for the bird
+BIRD_SIZE = (40, 26)                             # Dimensions for the bird
 BIRD_IMG = pygame.transform.scale(BIRD_IMG, BIRD_SIZE)  # Resize bird image
-GRAVITY = 4                                    # Gravity constant affecting the bird's fall
-JUMP = 30                                      # Vertical jump height for the bird
+GRAVITY = 4                                      # Gravity constant affecting the bird's fall
+JUMP = 30                                        # Vertical jump height for the bird
 
 # Pipe settings
 PIPE_X0 = 400  # Initial x-coordinate of pipes
@@ -35,6 +34,7 @@ GAP_PIPE = 150  # Gap between the top and bottom pipes
 PIPE_EVENT = pygame.USEREVENT  # Custom event for pipe generation
 pygame.time.set_timer(PIPE_EVENT, 1000)  # Set the timer to trigger the event every second
 FONT = pygame.font.SysFont("comicsans", 30)  # Font for displaying text
+STATS_FONT = pygame.font.SysFont("comicsans", 40)  # Font for stats display
 SCORE_INCREASE = 0.01  # Score increment for surviving birds
 GEN = 0  # Counter for tracking generations
 
@@ -111,6 +111,7 @@ def game_loop(genomes, config):
     ge = []  # Genomes list
 
     pipe_list = []  # List to store pipes
+    start_time = pygame.time.get_ticks()  # Record the start time of the generation
 
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)  # Create neural network
@@ -176,10 +177,18 @@ def game_loop(genomes, config):
         if alive_birds == 0:  # End generation if all birds are dead
             return
 
-        # Display generation stats
-        msg = f"Gen: {GEN} Birds Alive: {alive_birds} Score: {int(max_score)}"
-        text = FONT.render(msg, True, BLACK)
-        WN.blit(text, (40, 20))
+        # Display generation stats neatly
+        current_time = (pygame.time.get_ticks() - start_time) // 1000  # Time elapsed in seconds
+        stats = [
+            f"Generation: {GEN}",
+            f"Alive Birds: {alive_birds}",
+            f"Score: {int(max_score)}",
+            f"Time: {current_time}s",
+        ]
+        for idx, stat in enumerate(stats):
+            stat_text = STATS_FONT.render(stat, True, BLACK)
+            WN.blit(stat_text, (10, 10 + idx * 40))  # Display each stat with spacing
+
         pygame.display.update()
         CLOCK.tick(FPS)  # Control frame rate
 
