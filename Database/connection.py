@@ -2,7 +2,7 @@ import pymysql
 
 # Database connection details
 db_config = {
-    'host': 'flappybird.cvy8sgyqqqr.us-east-2.rds.amazonaws.com', 
+    'host': '543', 
     'user': 'admin',  
     'password': 'Flappybird',  
     'database': 'Flappy_Base',  
@@ -18,7 +18,7 @@ def connect_to_database():
         print(f"Failed to connect to the database: {e}")
         return None
 
-# Example usage
+
 connection = connect_to_database()
 
 if connection:
