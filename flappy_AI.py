@@ -90,6 +90,13 @@ class Bird:
             return True
         return False
 
+    def draw_lines(self, pipes):
+        # Draw red lines to nearest pipes
+        if pipes:
+            nearest_pipe = pipes[0]
+            pygame.draw.line(WN, RED, self.bird_rect.center, nearest_pipe.top_pipe_rect.midbottom, 2)
+            pygame.draw.line(WN, RED, self.bird_rect.center, nearest_pipe.bottom_pipe_rect.midtop, 2)
+
 def menu():
     while True:
         WN.blit(BG, (0, 0))
@@ -167,6 +174,9 @@ def human_game():
         bird.move(jump)
         WN.blit(BIRD_IMG, bird.bird_rect)
 
+        # Draw lines to pipes
+        bird.draw_lines(pipes)
+
         # Check for collision only if game has started
         if game_started and bird.collision(pipes):
             game_over_text = FONT.render(f"Game Over! Score: {score}", True, BLACK)
@@ -192,7 +202,7 @@ def ai_game(genomes, config):
     pipes = []
     start_time = pygame.time.get_ticks()
 
-    for _, genome in genomes:
+    for _, genome in genomes[:20]:  # Increased to 20 birds
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         genome.fitness = 0
         nets.append(net)
@@ -225,11 +235,14 @@ def ai_game(genomes, config):
                     output = nets[i].activate([bird.bird_rect.y, pipes[0].top_pipe_rect.x, bird.bird_rect.y - (pipes[0].bottom_pipe_rect.top - GAP_PIPE / 2)])
                 else:
                     output = nets[i].activate([bird.bird_rect.y, BG_WIDTH, 0])
-                
+
                 bird.move(jump=output[0] > 0.5)
                 bird.score += SCORE_INCREASE
                 ge[i].fitness += SCORE_INCREASE
                 WN.blit(BIRD_IMG, bird.bird_rect)
+
+                # Draw lines to pipes
+                bird.draw_lines(pipes)
 
                 if bird.collision(pipes):
                     bird.dead = True
@@ -247,6 +260,7 @@ def ai_game(genomes, config):
 
         pygame.display.update()
         CLOCK.tick(FPS)
+
 
 def run():
     while True:
